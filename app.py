@@ -6,7 +6,7 @@ import uuid
 import random
 
 # 1. ตั้งค่าหน้าเว็บ
-st.set_page_config(page_title="TPRS Magic Wheel V59.1", layout="wide")
+st.set_page_config(page_title="Talk to Me V1.0", layout="wide")
 
 # 2. Session State
 if 'display_text' not in st.session_state:
