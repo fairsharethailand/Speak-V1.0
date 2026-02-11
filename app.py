@@ -1,139 +1,88 @@
 import streamlit as st
 from gtts import gTTS
-import base64
-import os
-import uuid
-import random
+import base64, os, uuid, random
 
-# 1. ตั้งค่าหน้าเว็บ
-st.set_page_config(page_title="TPRS Magic Wheel V58.3 (Fixed)", layout="wide")
+# 1. Config
+st.set_page_config(page_title="TPRS Magic Wheel V58.3 Fix", layout="wide")
 
-# 2. Session State
-if 'display_text' not in st.session_state:
-    st.session_state.display_text = ""
-if 'audio_key' not in st.session_state:
-    st.session_state.audio_key = 0
+if 'display_text' not in st.session_state: st.session_state.display_text = ""
+if 'audio_key' not in st.session_state: st.session_state.audio_key = 0
 
-# --- Grammar Data ---
-PAST_TO_INF = {
-    "went": "go", "ate": "eat", "saw": "see", "bought": "buy", 
-    "had": "have", "did": "do", "drank": "drink", "slept": "sleep", 
-    "wrote": "write", "came": "come", "ran": "run", "met": "meet",
-    "spoke": "speak", "took": "take", "found": "find", "gave": "give",
-    "thought": "think", "brought": "bring", "told": "tell", "made": "make",
-    "cut": "cut", "put": "put", "hit": "hit", "read": "read", "cost": "cost"
-}
+# --- Grammar Helpers ---
+PAST_TO_INF = {"went": "go", "ate": "eat", "saw": "see", "bought": "buy", "had": "have", "did": "do", "drank": "drink", "slept": "sleep", "wrote": "write", "came": "come", "ran": "run", "met": "meet", "spoke": "speak", "took": "take", "found": "find", "gave": "give", "thought": "think", "brought": "bring", "told": "tell", "made": "make", "cut": "cut", "put": "put", "hit": "hit", "read": "read", "cost": "cost"}
+IRREGULAR_PLURALS = ["children", "people", "men", "women", "mice", "teeth", "feet", "geese", "oxen"]
 
-IRREGULAR_PLURALS = [
-    "children", "people", "men", "women", "mice", "teeth", "feet", "geese", "oxen", "data"
-]
+def is_present_perfect(pred):
+    w = pred.lower().split()
+    return len(w) >= 2 and w[0] in ['have', 'has', 'had'] and (w[1].endswith('ed') or w[1] in PAST_TO_INF or w[1] in ['been', 'done', 'gone', 'seen', 'eaten'])
 
-# --- Helper Functions ---
-def is_present_perfect(predicate):
-    words = predicate.lower().split()
-    if len(words) >= 2 and words[0] in ['have', 'has', 'had']:
-        v2 = words[1]
-        if v2.endswith('ed') or v2 in PAST_TO_INF or v2 in ['been', 'done', 'gone', 'seen', 'eaten']:
-            return True
-    return False
-
-def check_tense_type(predicate):
-    words = predicate.split()
-    if not words: return "unknown"
-    v = words[0].lower().strip()
-    if v.endswith("ed") or v in PAST_TO_INF:
-        return "past"
-    if v.endswith("s") or v.endswith("es") or v in ["go", "eat", "see", "buy", "do", "drink", "sleep", "write", "come", "run", "meet", "speak", "take", "find", "give", "think", "bring", "tell", "make"]:
-        return "present"
+def check_tense(pred):
+    w = pred.split()
+    if not w: return "unknown"
+    v = w[0].lower().strip()
+    if v.endswith("ed") or v in PAST_TO_INF: return "past"
+    if v.endswith("s") or v.endswith("es") or v in ["go", "eat", "see", "buy", "do", "drink", "sleep", "write", "come", "run", "meet", "speak", "take", "find", "give", "think", "bring", "tell", "make"]: return "present"
     return "unknown"
 
-def conjugate_to_singular(predicate):
-    """เปลี่ยน Verb ให้เป็นรูปเอกพจน์สำหรับ Who Question"""
-    words = predicate.split()
-    if not words: return ""
-    v = words[0].lower()
-    rest = " ".join(words[1:])
-    if v.endswith('s') or check_tense_type(v) == "past":
-        return predicate
-    if v.endswith(('ch', 'sh', 'x', 's', 'z', 'o')):
-        v = v + "es"
-    elif v.endswith('y') and len(v) > 1 and v[-2] not in 'aeiou':
-        v = v[:-1] + "ies"
-    else:
-        v = v + "s"
+def conjugate_singular(pred):
+    w = pred.split(); v = w[0].lower(); rest = " ".join(w[1:])
+    if v.endswith('s') or check_tense(v) == "past": return pred
+    if v.endswith(('ch', 'sh', 'x', 's', 'z', 'o')): v += "es"
+    elif v.endswith('y') and len(v) > 1 and v[-2] not in 'aeiou': v = v[:-1] + "ies"
+    else: v += "s"
     return f"{v} {rest}".strip()
 
-def get_auxiliary(subject, pred_target, pred_other):
-    if is_present_perfect(pred_target):
-        return None 
-    tense_target = check_tense_type(pred_target)
-    tense_other = check_tense_type(pred_other)
-    if tense_target == "past" or tense_other == "past":
-        return "Did"
-    s = subject.lower().strip()
-    if s in IRREGULAR_PLURALS or 'and' in s or s in ['i', 'you', 'we', 'they'] or (s.endswith('s') and s not in ['james', 'charles', 'boss']):
-        return "Do"
+def get_aux(subj, p1, p2):
+    if is_present_perfect(p1): return None
+    if check_tense(p1) == "past" or check_tense(p2) == "past": return "Did"
+    s = subj.lower().strip()
+    if s in IRREGULAR_PLURALS or 'and' in s or s in ['i', 'you', 'we', 'they'] or (s.endswith('s') and s not in ['james', 'charles', 'boss']): return "Do"
     return "Does"
 
-def to_infinitive(predicate, other_predicate):
-    words = predicate.split()
-    if not words: return ""
-    v = words[0].lower().strip()
-    rest = " ".join(words[1:])
-    is_past = (check_tense_type(predicate) == "past" or check_tense_type(other_predicate) == "past")
+def to_inf(pred, other):
+    w = pred.split(); v = w[0].lower(); rest = " ".join(w[1:])
+    is_past = (check_tense(pred) == "past" or check_tense(other) == "past")
     if is_past or v in ['had', 'has', 'have']:
-        if v in ['had', 'has', 'have']: inf_v = "have"
-        elif v in PAST_TO_INF: inf_v = PAST_TO_INF[v]
-        elif v.endswith("ed"):
-            if v.endswith("ied"): inf_v = v[:-3] + "y"
-            else: inf_v = v[:-2]
-        else: inf_v = v
+        if v in ['had', 'has', 'have']: inf = "have"
+        elif v in PAST_TO_INF: inf = PAST_TO_INF[v]
+        elif v.endswith("ied"): inf = v[:-3] + "y"
+        elif v.endswith("ed"): inf = v[:-2]
+        else: inf = v
     else:
         if v.endswith("es"):
-            for suffix in ['sses', 'ches', 'shes', 'xes']:
-                if v.endswith(suffix): 
-                    inf_v = v[:-2]
-                    break
-            else: inf_v = v[:-2]
-        elif v.endswith("s") and not v.endswith("ss"): inf_v = v[:-1]
-        else: inf_v = v
-    return f"{inf_v} {rest}".strip()
+            for sfx in ['sses', 'ches', 'shes', 'xes']:
+                if v.endswith(sfx): inf = v[:-2]; break
+            else: inf = v[:-2]
+        elif v.endswith("s") and not v.endswith("ss"): inf = v[:-1]
+        else: inf = v
+    return f"{inf} {rest}".strip()
 
-def has_be_verb(predicate):
-    v_low = predicate.lower().split()
-    be_and_modals = ['is', 'am', 'are', 'was', 'were', 'can', 'will', 'must', 'should', 'could', 'would']
-    return v_low and v_low[0] in be_and_modals
+def has_be(pred):
+    v = pred.lower().split()
+    return v and v[0] in ['is', 'am', 'are', 'was', 'were', 'can', 'will', 'must', 'should', 'could', 'would']
 
-# --- Core Logic ---
-def build_logic(q_type, data):
-    s1, p1, s2, p2 = data['s1'], data['p1'], data['s2'], data['p2']
-    main_sent = data['main_sent']
-    subj_real, pred_real = (s1 if s1 else "He"), (p1 if p1 else "is here")
-    subj_trick = s2 if s2 != "-" else s1
-    pred_trick = p2 if p2 != "-" else p1
+def build_logic(q_type, d):
+    s1, p1, s2, p2 = d['s1'], d['p1'], d['s2'], d['p2']
+    subj_r, pred_r = (s1 or "He"), (p1 or "is here")
+    subj_t = s2 if s2 != "-" else s1
+    pred_t = p2 if p2 != "-" else p1
 
-    def swap_front(s, p):
-        parts = p.split()
-        return f"{parts[0].capitalize()} {s} {' '.join(parts[1:])}".strip().replace("  ", " ")
+    def swap(s, p):
+        pts = p.split()
+        return f"{pts[0].capitalize()} {s} {' '.join(pts[1:])}".strip()
 
-    if q_type == "Statement": return main_sent
+    if q_type == "Statement": return d['main_sent']
     if q_type == "Negative":
-        if has_be_verb(pred_trick) or is_present_perfect(pred_trick):
-            parts = pred_trick.split()
-            return f"No, {subj_trick} {parts[0]} not {' '.join(parts[1:])}."
-        aux = get_auxiliary(subj_trick, pred_trick, pred_real)
-        return f"No, {subj_trick} {aux.lower()} not {to_infinitive(pred_trick, pred_real)}."
-    if q_type == "Yes-Q":
-        if has_be_verb(pred_real) or is_present_perfect(pred_real): return swap_front(subj_real, pred_real) + "?"
-        aux = get_auxiliary(subj_real, pred_real, pred_trick)
-        return f"{aux} {subj_real} {to_infinitive(pred_real, pred_trick)}?"
-    if q_type == "No-Q":
-        if has_be_verb(pred_trick) or is_present_perfect(pred_trick): return swap_front(subj_trick, pred_trick) + "?"
-        aux = get_auxiliary(subj_trick, pred_trick, pred_real)
-        return f"{aux} {subj_trick} {to_infinitive(pred_trick, pred_real)}?"
+        if has_be(pred_t) or is_present_perfect(pred_t):
+            pts = pred_t.split()
+            return f"No, {subj_t} {pts[0]} not {' '.join(pts[1:])}."
+        aux = get_aux(subj_t, pred_t, pred_r)
+        return f"No, {subj_t} {aux.lower()} not {to_inf(pred_t, pred_r)}."
     
-    if q_type == "Either/Or":
-        if s2 != "-" and s1.lower().strip() != s2.lower().strip():
-            if has_be_verb(pred_real) or is_present_perfect(pred_real):
-                v_parts = pred_real.split()
-                return f"{v_
+    if q_type == "Yes-Q":
+        if has_be(pred_r) or is_present_perfect(pred_r): return swap(subj_r, pred_r) + "?"
+        return f"{get_aux(subj_r, pred_r, pred_t)} {subj_r} {to_inf(pred_r, pred_t)}?"
+
+    if q_type == "No-Q":
+        if has_be(pred_t) or is_present_perfect(pred_t): return swap(subj_t, pred_t) + "?"
+        return f"{get
