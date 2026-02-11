@@ -1,12 +1,9 @@
 import streamlit as st
 from gtts import gTTS
-import base64
-import os
-import uuid
-import random
+import base64, os, uuid, random
 
 # 1. Setup
-st.set_page_config(page_title="TPRS Magic Wheel V58.8", layout="wide")
+st.set_page_config(page_title="TPRS Magic Wheel V58.9", layout="wide")
 
 if 'display_text' not in st.session_state:
     st.session_state.display_text = ""
@@ -19,9 +16,10 @@ PAST_TO_INF = {
     "had": "have", "did": "do", "drank": "drink", "slept": "sleep", 
     "wrote": "write", "came": "come", "ran": "run", "met": "meet",
     "spoke": "speak", "took": "take", "found": "find", "gave": "give",
-    "thought": "think", "brought": "bring", "tell": "told", "made": "make",
+    "thought": "think", "brought": "bring", "told": "tell", "made": "make",
     "cut": "cut", "put": "put", "hit": "hit", "read": "read", "cost": "cost"
 }
+# รายการคำนามพหูพจน์ไม่ปกติ
 IRR_PL = ["children", "people", "men", "women", "mice", "teeth", "feet", "geese", "oxen"]
 
 # --- Helper Functions ---
@@ -37,12 +35,10 @@ def check_tense_type(predicate):
     words = predicate.split()
     if not words: return "unknown"
     v = words[0].lower().strip()
-    if v.endswith("ed") or v in PAST_TO_INF:
-        return "past"
+    if v.endswith("ed") or v in PAST_TO_INF: return "past"
     return "present"
 
 def conjugate_singular(predicate):
-    """พิเศษสำหรับ Who: เติม s/es ให้กริยา"""
     words = predicate.split()
     if not words: return ""
     v = words[0].lower(); rest = " ".join(words[1:])
@@ -56,6 +52,7 @@ def get_auxiliary(subject, pred_target, pred_other):
     if check_tense_type(pred_target) == "past" or check_tense_type(pred_other) == "past":
         return "Did"
     s_l = subject.lower().strip()
+    # ตรวจสอบ Irregular Plural: ถ้าเจอคำในลิสต์ ให้ใช้ Do ทันที
     if s_l in IRR_PL or 'and' in s_l or s_l in ['i', 'you', 'we', 'they'] or (s_l.endswith('s') and s_l not in ['james', 'charles', 'boss']):
         return "Do"
     return "Does"
@@ -117,7 +114,9 @@ def build_logic(q_type, data):
     if q_type in ["What", "Where", "When", "How", "Why"]:
         if has_be_verb(pred_r) or is_present_perfect(pred_r):
             return f"{q_type} {pred_r.split()[0]} {subj_r} {' '.join(pred_r.split()[1:])}?"
-        return f"{q_type} {get_auxiliary(subj_r, pred_r, pred_t).lower()} {subj_r} {to_infinitive(pred_r, pred_t)}?"
+        # ใช้ get_auxiliary ซึ่งรองรับ Irregular Plural แล้ว
+        aux = get_auxiliary(subj_r, pred_r, pred_t)
+        return f"{q_type} {aux.lower()} {subj_r} {to_infinitive(pred_r, pred_t)}?"
 
     if q_type == "Either/Or":
         if s2 != "-" and s1.lower().strip() != s2.lower().strip():
@@ -143,7 +142,7 @@ def play_voice(text):
     except: pass
 
 # --- UI ---
-st.title("🎡 TPRS Magic Wheel V58.8")
+st.title("🎡 TPRS Magic Wheel V58.9")
 m_in = st.text_input("📝 Main Sentence", "The children eat the cake.")
 c1, c2 = st.columns(2)
 with c1: sr, pr = st.text_input("Subject (R):", "The children"), st.text_input("Predicate (R):", "eat the cake")
