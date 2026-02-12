@@ -44,10 +44,16 @@ def check_tense_type(predicate):
     return "present"
 
 def conjugate_singular(predicate):
-    """ฟังก์ชันสำหรับ Who (คงเดิม): เติม s/es ให้กริยา"""
+    """ฟังก์ชันสำหรับ Who: เปลี่ยน have/has เป็น has หรือเติม s/es ให้กริยาทั่วไป"""
     words = predicate.split()
     if not words: return ""
     v = words[0].lower(); rest = " ".join(words[1:])
+    
+    # --- ส่วนที่เพิ่มใหม่ ---
+    if v in ['have', 'has']:
+        return f"has {rest}".strip()
+    # ----------------------
+
     if v.endswith(('ch', 'sh', 'x', 's', 'z', 'o')): v += "es"
     elif v.endswith('y') and len(v) > 1 and v[-2] not in 'aeiou': v = v[:-1] + "ies"
     else: v += "s"
